@@ -19,6 +19,7 @@ import { LocalCategoriesModule } from './local_categories/local_categories.modul
 import { LocalProductsModule } from './local_products/local_products.module';
 import { OffersModule } from './offers/offers.module';
 import { OfferItemsModule } from './offer_items/offer_items.module';
+import { LocalProduct } from './local_products/models/local_product.model';
 
 @Module({
   imports: [
@@ -46,14 +47,7 @@ import { OfferItemsModule } from './offer_items/offer_items.module';
         username: config.get<string>('POSTGRES_USER'),
         password: config.get<string>('POSTGRES_PASSWORD'),
         database: config.get<string>('POSTGRES_DB'),
-        models: [
-          User,
-          Location,
-          LocalCategory,
-          LocalCategory,
-          Offer,
-          OfferItem,
-        ],
+        models: [User, Location, LocalCategory, LocalProduct, Offer, OfferItem],
         autoLoadModels: true,
         synchronize: true,
         logging: false,
