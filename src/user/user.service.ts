@@ -74,16 +74,22 @@ export class UserService implements OnModuleInit {
     const existing = await this.userRepo.findOne({
       where: { username: dto.username },
     });
+
     if (existing) {
       throw new BadRequestException(
         `"${dto.username}" username allaqachon mavjud`,
       );
     }
-    dto.full_name = this.normalizeName(dto.full_name);
+
+    const full_name = this.normalizeName(dto.full_name);
     const hashed_password = await this.hashPassword(dto.password);
+
     await this.userRepo.create({
-      ...dto,
+      username: dto.username,
+      full_name,
       hashed_password,
+      role: dto.role,
+      location_id: dto.location_id,
       is_login: AUTO_LOGIN_ROLES.includes(dto.role),
     });
 

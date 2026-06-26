@@ -1,7 +1,16 @@
-import { Column, DataType, Model, Table } from 'sequelize-typescript';
+import {
+  BelongsTo,
+  Column,
+  DataType,
+  ForeignKey,
+  Model,
+  Table,
+} from 'sequelize-typescript';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { Location } from '../../locations/models/location.model';
 
 interface UserAttr {
+  location_id?: string;
   full_name: string;
   username: string;
   email?: string;
@@ -85,4 +94,17 @@ export class User extends Model<User, UserAttr> {
     allowNull: false,
   })
   declare is_login: boolean;
+
+  @ForeignKey(() => Location)
+  @Column({
+    type: DataType.UUID,
+    allowNull: true,
+  })
+  declare location_id: string;
+
+  @BelongsTo(() => Location, {
+    foreignKey: 'location_id',
+    onDelete: 'CASCADE',
+  })
+  declare location: Location;
 }
