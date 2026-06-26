@@ -97,7 +97,7 @@ async function bootstrap(): Promise<void> {
       .setTitle('Hackat')
       .setDescription('Hackat API documentation')
       .setVersion('1.0.0')
-      .addServer('http://dev.udsgroup.uz', 'Production')
+      .addServer('https://dev.udsgroup.uz', 'Production')
       .addServer(`http://localhost:${port}`, 'Local')
       .addBearerAuth()
       .build();
