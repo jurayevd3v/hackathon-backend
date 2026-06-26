@@ -12,6 +12,13 @@ import { User } from './user/models/user.model';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 import { Location } from './locations/models/location.model';
 import { LocationModule } from './locations/location.module';
+import { LocalCategory } from './local_categories/models/local_category.model';
+import { Offer } from './offers/models/offer.model';
+import { OfferItem } from './offer_items/models/offer_item.model';
+import { LocalCategoriesModule } from './local_categories/local_categories.module';
+import { LocalProductsModule } from './local_products/local_products.module';
+import { OffersModule } from './offers/offers.module';
+import { OfferItemsModule } from './offer_items/offer_items.module';
 
 @Module({
   imports: [
@@ -39,7 +46,14 @@ import { LocationModule } from './locations/location.module';
         username: config.get<string>('POSTGRES_USER'),
         password: config.get<string>('POSTGRES_PASSWORD'),
         database: config.get<string>('POSTGRES_DB'),
-        models: [User, Location],
+        models: [
+          User,
+          Location,
+          LocalCategory,
+          LocalCategory,
+          Offer,
+          OfferItem,
+        ],
         autoLoadModels: true,
         synchronize: true,
         logging: false,
@@ -55,6 +69,10 @@ import { LocationModule } from './locations/location.module';
     AuthModule,
     UserModule,
     LocationModule,
+    LocalCategoriesModule,
+    LocalProductsModule,
+    OffersModule,
+    OfferItemsModule,
   ],
   controllers: [],
   providers: [

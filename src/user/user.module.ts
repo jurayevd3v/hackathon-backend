@@ -4,9 +4,10 @@ import { UserController } from './user.controller';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { User } from './models/user.model';
 import { JwtModule } from '@nestjs/jwt';
+import { Location } from '../locations/models/location.model';
 
 @Module({
-  imports: [SequelizeModule.forFeature([User]), JwtModule],
+  imports: [SequelizeModule.forFeature([User, Location]), JwtModule],
   controllers: [UserController],
   providers: [UserService],
   exports: [UserService],

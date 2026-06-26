@@ -1,6 +1,10 @@
 import { Column, DataType, HasMany, Model, Table } from 'sequelize-typescript';
 import { User } from '../../user/models/user.model';
 import { LocationType } from '../../common/enums/location-type.enum';
+import { LocalCategory } from '../../local_categories/models/local_category.model';
+import { LocalProduct } from '../../local_products/models/local_product.model';
+import { Offer } from '../../offers/models/offer.model';
+import { OfferItem } from '../../offer_items/models/offer_item.model';
 
 interface LocationAttr {
   type: LocationType;
@@ -62,4 +66,28 @@ export class Location extends Model<Location, LocationAttr> {
     as: 'users',
   })
   declare users?: User[];
+
+  @HasMany(() => LocalCategory, {
+    foreignKey: 'location_id',
+    as: 'local_category',
+  })
+  declare local_category?: LocalCategory[];
+
+  @HasMany(() => LocalProduct, {
+    foreignKey: 'location_id',
+    as: 'local_product',
+  })
+  declare local_product?: LocalProduct[];
+
+  @HasMany(() => Offer, {
+    foreignKey: 'location_id',
+    as: 'offers',
+  })
+  declare offers?: Offer[];
+
+  @HasMany(() => OfferItem, {
+    foreignKey: 'location_id',
+    as: 'offer_items',
+  })
+  declare offer_items?: OfferItem[];
 }

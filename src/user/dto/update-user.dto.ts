@@ -6,16 +6,18 @@ export class UpdateUserDto {
     example: 'John Doe',
     description: 'Foydalanuvchi to‘liq ismi',
   })
+  @IsOptional()
   @IsString({ message: 'full_name matn (string) bo‘lishi kerak' })
   @IsNotEmpty({ message: 'full_name bo‘sh bo‘lishi mumkin emas' })
-  full_name: string;
+  full_name?: string;
 
   @ApiProperty({
     example: 'john',
     description: 'Foydalanuvchi username manzili',
   })
+  @IsOptional()
   @IsNotEmpty({ message: 'username kiritilishi shart' })
-  username: string;
+  username?: string;
 
   @ApiPropertyOptional({
     example: 'user@example.com',

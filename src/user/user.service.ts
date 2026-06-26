@@ -18,6 +18,7 @@ import { ResetPasswordDto } from './dto/resetPassword.dto';
 import { UpdateUserLoginDto } from './dto/update-user-login.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { UpdateUserSalaryDto } from './dto/update-user-salary.dto';
+import { Location } from '../locations/models/location.model';
 
 const BCRYPT_ROUNDS = 10;
 const PAGE_LIMIT = 15;
@@ -30,6 +31,7 @@ export class UserService implements OnModuleInit {
 
   constructor(
     @InjectModel(User) private readonly userRepo: typeof User,
+    @InjectModel(Location) private readonly locationRepo: typeof Location,
     private readonly configService: ConfigService,
   ) {}
 
@@ -84,12 +86,21 @@ export class UserService implements OnModuleInit {
     const full_name = this.normalizeName(dto.full_name);
     const hashed_password = await this.hashPassword(dto.password);
 
+    let location: any;
+    if (dto.location_id) {
+      location = await this.locationRepo.findOne({
+        where: { id: dto.location_id },
+      });
+      if (!location) {
+        throw new BadRequestException('Joylashuv topilmadi');
+      }
+    }
     await this.userRepo.create({
       username: dto.username,
       full_name,
       hashed_password,
       role: dto.role,
-      location_id: dto.location_id,
+      location_id: location?.id || null,
       is_login: AUTO_LOGIN_ROLES.includes(dto.role),
     });
 

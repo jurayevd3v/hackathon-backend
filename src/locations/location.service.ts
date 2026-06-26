@@ -70,13 +70,6 @@ export class LocationService {
 
     const [records, total_count] = await Promise.all([
       this.locationRepo.findAll({
-        include: [
-          {
-            model: User,
-            as: 'assignee',
-            attributes: ['id', 'full_name', 'role'],
-          },
-        ],
         limit,
         offset,
         order: [['createdAt', 'DESC']],
@@ -119,15 +112,7 @@ export class LocationService {
   }
 
   private async findLocationOrFail(id: string): Promise<Location> {
-    const location = await this.locationRepo.findByPk(id, {
-      include: [
-        {
-          model: User,
-          as: 'assignee',
-          attributes: ['id', 'full_name', 'role'],
-        },
-      ],
-    });
+    const location = await this.locationRepo.findByPk(id, {});
     if (!location) {
       throw new NotFoundException(`ID ${id} bo'yicha joylashuv topilmadi`);
     }
