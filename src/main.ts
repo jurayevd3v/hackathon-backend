@@ -94,10 +94,10 @@ async function bootstrap(): Promise<void> {
 
   if (!isProd) {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('USD BROKER')
-      .setDescription('Broker API documentation')
+      .setTitle('Hackat')
+      .setDescription('Hackat API documentation')
       .setVersion('1.0.0')
-      .addServer('https://api.udsgroup.uz', 'Production')
+      .addServer('https://dev.udsgroup.uz', 'Production')
       .addServer(`http://localhost:${port}`, 'Local')
       .addBearerAuth()
       .build();
@@ -118,7 +118,7 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   await app.listen(port);
-  appLogger.log(`Broker [${nodeEnv}] started on http://localhost:${port}/api`);
+  appLogger.log(`Hackat [${nodeEnv}] started on http://localhost:${port}/api`);
 }
 
 bootstrap().catch((err: unknown) => {
