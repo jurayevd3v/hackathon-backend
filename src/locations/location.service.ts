@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
@@ -10,7 +11,8 @@ import { User } from '../user/models/user.model';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { UpdateLocationActiveDto } from './dto/update-location-active.dto';
-import { UpdateLocationContactedDto } from './dto/update-location-contact.dto';
+import { LocationType } from '../common/enums/location-type.enum';
+import { GeocodeService } from '../common/geocode/service';
 
 const PAGE_LIMIT = 20;
 
@@ -19,27 +21,48 @@ export class LocationService {
   constructor(
     @InjectModel(Location) private readonly locationRepo: typeof Location,
     @InjectModel(User) private readonly userRepo: typeof User,
+    private readonly geocodeService: GeocodeService,
   ) {}
 
   async createLocation(dto: CreateLocationDto) {
     if (dto.inn) {
       await this.ensureInnIsUnique(dto.inn);
     }
+    const name = this.normalizeName(dto.name);
 
-    if (dto.assignee_id) {
-      await this.ensureUserExists(dto.assignee_id);
+    let directorName: string | null = null;
+    if (dto.director_name) {
+      directorName = this.normalizeName(dto.director_name);
     }
+    try {
+      const location = await this.locationRepo.create({
+        ...dto,
+        name,
+        director_name: directorName,
+      });
 
-    if (dto.parent_id) {
-      await this.ensureLocationExists(dto.parent_id, 'parent_id');
+      if (location.type === LocationType.FACTORY && location.address) {
+        const coords = await this.geocodeService.geocodeAddress(
+          location.address,
+        );
+        location.lat = coords.lat;
+        location.lng = coords.lng;
+        await location.save();
+      }
+
+      return {
+        message: 'Joylashuv muvaffaqiyatli yaratildi',
+      };
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        throw new BadRequestException(
+          `Joylashuv yaratishda xatolik: ${error.message}`,
+        );
+      }
+      throw new InternalServerErrorException(
+        "Joylashuv yaratishda noma'lum xatolik yuz berdi",
+      );
     }
-
-    const location = await this.locationRepo.create({ ...dto });
-
-    return {
-      message: 'Joylashuv muvaffaqiyatli yaratildi',
-      data: location,
-    };
   }
 
   async getAllLocations(page: number) {
@@ -75,19 +98,6 @@ export class LocationService {
       await this.ensureInnIsUnique(dto.inn, id);
     }
 
-    if (dto.assignee_id) {
-      await this.ensureUserExists(dto.assignee_id);
-    }
-
-    if (dto.parent_id) {
-      if (dto.parent_id === id) {
-        throw new BadRequestException(
-          "Joylashuv o'zining ota (parent) joylashuvi bo'la olmaydi",
-        );
-      }
-      await this.ensureLocationExists(dto.parent_id, 'parent_id');
-    }
-
     await location.update({ ...dto });
 
     return { message: 'Joylashuv muvaffaqiyatli yangilandi' };
@@ -100,24 +110,8 @@ export class LocationService {
     return { message: 'Joylashuv faollik holati yangilandi' };
   }
 
-  async updateLocationContacted(id: string, dto: UpdateLocationContactedDto) {
-    const location = await this.findLocationOrFail(id);
-    await location.update({ is_contacted: dto.is_contacted });
-
-    return { message: 'Joylashuv aloqa holati yangilandi' };
-  }
-
   async deleteLocation(id: string) {
     const location = await this.findLocationOrFail(id);
-
-    const childCount = await this.locationRepo.count({
-      where: { parent_id: id },
-    });
-    if (childCount > 0) {
-      throw new BadRequestException(
-        "Bu joylashuvga bog'liq bola (filial) joylashuvlar mavjud, avval ularni o'chiring yoki qayta tayinlang",
-      );
-    }
 
     await location.destroy();
 
@@ -138,27 +132,6 @@ export class LocationService {
       throw new NotFoundException(`ID ${id} bo'yicha joylashuv topilmadi`);
     }
     return location;
-  }
-
-  private async ensureUserExists(userId: string): Promise<void> {
-    const user = await this.userRepo.findByPk(userId);
-    if (!user) {
-      throw new NotFoundException(
-        `ID ${userId} bo'yicha foydalanuvchi (assignee) topilmadi`,
-      );
-    }
-  }
-
-  private async ensureLocationExists(
-    locationId: string,
-    fieldName: string,
-  ): Promise<void> {
-    const parent = await this.locationRepo.findByPk(locationId);
-    if (!parent) {
-      throw new NotFoundException(
-        `ID ${locationId} bo'yicha ${fieldName} uchun joylashuv topilmadi`,
-      );
-    }
   }
 
   private async ensureInnIsUnique(
@@ -200,5 +173,13 @@ export class LocationService {
         },
       },
     };
+  }
+  private normalizeName(name: string): string {
+    if (!name) return name;
+    return name
+      .replace(/[''`´]/g, "'")
+      .replace(/[«»„""]/g, '')
+      .trim()
+      .toUpperCase();
   }
 }

@@ -1,14 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsBoolean,
-  IsEnum,
-  IsLatitude,
-  IsLongitude,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  IsUUID,
-} from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { LocationType } from '../../common/enums/location-type.enum';
 
 export class CreateLocationDto {
@@ -59,44 +50,4 @@ export class CreateLocationDto {
   @IsOptional()
   @IsString({ message: 'inn matn (string) bo‘lishi kerak' })
   inn?: string;
-
-  @ApiPropertyOptional({
-    example: false,
-    description: 'Aloqa qilinganligi holati',
-  })
-  @IsOptional()
-  @IsBoolean({ message: 'is_contacted boolean bo‘lishi kerak' })
-  is_contacted?: boolean;
-
-  @ApiPropertyOptional({
-    example: 40.7821,
-    description: 'Kenglik (latitude)',
-  })
-  @IsOptional()
-  @IsLatitude({ message: 'lat noto‘g‘ri formatda' })
-  lat?: number;
-
-  @ApiPropertyOptional({
-    example: 72.3442,
-    description: 'Uzunlik (longitude)',
-  })
-  @IsOptional()
-  @IsLongitude({ message: 'lng noto‘g‘ri formatda' })
-  lng?: number;
-
-  @ApiPropertyOptional({
-    example: 'b1e2a3c4-...',
-    description: 'Mas’ul foydalanuvchi ID',
-  })
-  @IsOptional()
-  @IsUUID('4', { message: 'assignee_id noto‘g‘ri UUID formatda' })
-  assignee_id?: string;
-
-  @ApiPropertyOptional({
-    example: 'c4b3a2e1-...',
-    description: 'Ota joylashuv ID (filial bo‘lsa)',
-  })
-  @IsOptional()
-  @IsUUID('4', { message: 'parent_id noto‘g‘ri UUID formatda' })
-  parent_id?: string;
 }

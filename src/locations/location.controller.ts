@@ -24,9 +24,13 @@ import { Roles } from '../common/decorators/roles-auth-decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { LocationService } from './location.service';
-import { UpdateLocationContactedDto } from './dto/update-location-contact.dto';
 
-const ADMIN_ROLES = [UserRole.SUPER_ADMIN, UserRole.ADMIN];
+const ADMIN_ROLES = [
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.COMPANY,
+  UserRole.FACTORY,
+];
 
 @ApiTags('Locations')
 @ApiBearerAuth()
@@ -75,16 +79,6 @@ export class LocationController {
     @Body() dto: UpdateLocationActiveDto,
   ) {
     return this.locationService.updateLocationActive(id, dto);
-  }
-
-  @ApiOperation({ summary: 'Update location contacted status' })
-  @Roles(...ADMIN_ROLES)
-  @Patch('contacted/:id')
-  async updateLocationContacted(
-    @Param('id') id: string,
-    @Body() dto: UpdateLocationContactedDto,
-  ) {
-    return this.locationService.updateLocationContacted(id, dto);
   }
 
   @ApiOperation({ summary: "Joylashuvni o'chirish" })
