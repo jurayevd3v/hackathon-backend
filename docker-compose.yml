@@ -1,0 +1,41 @@
+services:
+  broker_postgres:
+    image: postgres:16
+    container_name: broker_postgres_db
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "5435:5432"
+    volumes:
+      - broker_pg_data:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500m"
+        max-file: "3"
+  broker:
+    build: .
+    container_name: broker
+    restart: always
+    depends_on:
+      - broker_postgres
+    env_file:
+      - .env
+    ports:
+      - "${API_PORT}:5000"
+    command: sh -c "until nc -z broker_postgres 5432; do echo 'Postgres
+      kutilmoqda...'; sleep 2; done && npm run start:prod"
+    extra_hosts:
+      - "api.telegram.org:149.154.166.110"
+      - "api.usderp.uz:75.119.154.114"
+    dns:
+      - 1.1.1.1
+      - 8.8.4.4
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500m"
+        max-file: "3"
+volumes:
+  broker_pg_data:
