@@ -31,7 +31,12 @@ const ADMIN_ROLES = [UserRole.SUPER_ADMIN, UserRole.ADMIN];
 
 const COMPANY_ROLES = [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COMPANY];
 
-const ALL_ROLES = [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COMPANY];
+const ALL_ROLES = [
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.COMPANY,
+  UserRole.FACTORY,
+];
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -85,7 +90,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Update user by ID' })
-  @Roles(...COMPANY_ROLES)
+  @Roles(...ALL_ROLES)
   @Put(':id')
   async updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.userService.updateUser(id, dto);
