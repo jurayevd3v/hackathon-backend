@@ -312,12 +312,13 @@ Mavjud barcha endpointlar system prompt da ko'rsatilgan (Swagger dan avtomatik y
               body: {
                 type: 'object',
                 description:
-                  "Request body (POST/PUT). MUHIM: bu maydon object bo'lishi SHART, JSON string emas! Masalan: {key: value}",
+                  "Request body (POST/PUT). Object formatida yubor. Agar kerak bo'lmasa bu maydonni umuman qo'shma.",
                 additionalProperties: true,
               },
               params: {
                 type: 'object',
-                description: 'Query parametrlar. Object formatida: {page: 1}',
+                description:
+                  "Query parametrlar. Object formatida: {page: 1}. Agar kerak bo'lmasa bu maydonni umuman qo'shma.",
                 additionalProperties: true,
               },
             },
@@ -424,14 +425,18 @@ data — object array, har bir object bir qator bo'ladi.`,
         if (q) url += `?${q}`;
       }
 
-      // body string kelsa parse qilamiz (model xatosi uchun himoya)
+      // body/params null yoki string kelsa handle qilamiz
       let bodyData = input.body;
+      if (bodyData === null) bodyData = undefined;
       if (typeof bodyData === 'string') {
         try {
           bodyData = JSON.parse(bodyData) as Record<string, unknown>;
         } catch {
-          bodyData = {};
+          bodyData = undefined;
         }
+      }
+      if (input.params === null) {
+        input.params = undefined;
       }
 
       const res = await fetch(url, {
@@ -520,11 +525,12 @@ STRATEGIYA:
 - Excel kerak bo'lsa: avval db_query → natijani export_excel ga ber
 
 JUDA MUHIM — API_CALL HAQIDA:
+- api_call da params va body maydonlarini faqat kerak bo'lganda qo'sh, aks holda QO'SHMA (null yuborme)
 - Sen api_call tool orqali POST, PUT, DELETE amallarini BAJARISHGA QODIRSAN
 - "yaratish", "qo'shish", "yangilash", "o'chirish" so'rovlarida DOIM api_call ishlat
 - Hech qachon "menda bu funksiya yo'q" yoki "curl bilan qiling" dema
 - Foydalanuvchi tasdiqlasa — darhol api_call chaqir, izoh yozma
-- Location yaratish: POST /api/locations {name, type, address?, phone?}
+- Location yaratish: POST /api/location {name, type, address?, phone?, is_active?, is_contacted?}
 - Offer yaratish: POST /api/offers {location_id, items: [...]}
 - Swagger da ko'rsatilgan BARCHA endpointlarni ishlatishga ruxsating bor
 
