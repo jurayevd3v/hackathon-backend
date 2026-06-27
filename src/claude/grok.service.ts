@@ -312,13 +312,12 @@ Mavjud barcha endpointlar system prompt da ko'rsatilgan (Swagger dan avtomatik y
               body: {
                 type: 'object',
                 description:
-                  'Request body (POST/PUT). MUHIM: bu maydon object bolishi SHART, JSON string emas! Masalan: {"key": "value"}',
+                  "Request body (POST/PUT). MUHIM: bu maydon object bo'lishi SHART, JSON string emas! Masalan: {key: value}",
                 additionalProperties: true,
               },
               params: {
                 type: 'object',
-                description:
-                  'Query parametrlar. Object formatida: {"page": "1"}',
+                description: 'Query parametrlar. Object formatida: {page: 1}',
                 additionalProperties: true,
               },
             },
@@ -519,6 +518,15 @@ QAYSI TOOL NI QACHON ISHLATISH:
 STRATEGIYA:
 - Avval db_query bilan ma'lumot ol → keyin tahlil qil yoki api_call bilan amal bajar
 - Excel kerak bo'lsa: avval db_query → natijani export_excel ga ber
+
+JUDA MUHIM — API_CALL HAQIDA:
+- Sen api_call tool orqali POST, PUT, DELETE amallarini BAJARISHGA QODIRSAN
+- "yaratish", "qo'shish", "yangilash", "o'chirish" so'rovlarida DOIM api_call ishlat
+- Hech qachon "menda bu funksiya yo'q" yoki "curl bilan qiling" dema
+- Foydalanuvchi tasdiqlasa — darhol api_call chaqir, izoh yozma
+- Location yaratish: POST /api/locations {name, type, address?, phone?}
+- Offer yaratish: POST /api/offers {location_id, items: [...]}
+- Swagger da ko'rsatilgan BARCHA endpointlarni ishlatishga ruxsating bor
 
 RASM ORQALI OFFER YARATISH — QADAMLAR:
 1. Rasmdan mahsulotlar ro'yxatini ajrat
