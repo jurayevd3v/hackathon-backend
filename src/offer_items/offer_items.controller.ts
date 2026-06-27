@@ -7,12 +7,18 @@ import {
   Post,
   Get,
   Delete,
+  Query,
 } from '@nestjs/common';
 import { OfferItemsService } from './offer_items.service';
 import { CreateOfferItemDto } from './dto/create-offer_item.dto';
 import { UpdateOfferItemDto } from './dto/update-offer_item.dto';
 import { UpdateOfferItemActiveDto } from './dto/update-offer_item-active.dto';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Roles } from '../common/decorators/roles-auth-decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -24,7 +30,12 @@ import { UpdateOfferItemDeliveredQuantityDto } from './dto/update-offer_item-del
 import { SelectOfferItemVariantDto } from './dto/select-offer_item-variant.dto';
 import { UpdateOfferItemVariantsDto } from './dto/update-offer_item-variant.dto';
 
-const ADMIN_BROKER_ROLES = [UserRole.SUPER_ADMIN, UserRole.ADMIN];
+const ADMIN_BROKER_ROLES = [
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.FACTORY,
+  UserRole.COMPANY,
+];
 
 @ApiTags('Offer Items')
 @ApiBearerAuth()
@@ -40,25 +51,26 @@ export class OfferItemsController {
     return this.offerItemsService.createOfferItem(dto);
   }
 
-  // @ApiOperation({ summary: "Supplier bo'yicha offer itemlarni sahifalash" })
-  // @Roles(UserRole.ADMIN)
-  // @ApiQuery({ name: 'status', required: false })
-  // @ApiQuery({ name: 'page', required: false })
-  // @ApiQuery({ name: 'limit', required: false })
-  // @Get('supplier')
-  // getPaginatedItemsBySupplier(
-  //   @Req() req: Request & { user: JwtPayload; ip: string },
-  //   @Query('status') status: string,
-  //   @Query('page') page: number,
-  //   @Query('limit') limit?: number,
-  // ) {
-  //   return this.offerItemsService.getPaginatedItemsBySupplier(
-  //     req.user.id,
-  //     status,
-  //     page,
-  //     limit,
-  //   );
-  // }
+  @ApiOperation({ summary: "Location bo'yicha offer itemlarni sahifalash" })
+  @Roles(...ADMIN_BROKER_ROLES)
+  @ApiQuery({ name: 'location_id', required: false })
+  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @Get('location')
+  getPaginatedItemsBySupplier(
+    @Query('location_id') location_id: string,
+    @Query('status') status: string,
+    @Query('page') page: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.offerItemsService.getPaginatedItemsBySupplier(
+      location_id,
+      status,
+      page,
+      limit,
+    );
+  }
 
   @ApiOperation({ summary: "Offer item ID bo'yicha olish" })
   @Roles(...ADMIN_BROKER_ROLES)

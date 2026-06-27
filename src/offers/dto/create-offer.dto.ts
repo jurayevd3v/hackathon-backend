@@ -52,11 +52,6 @@ export class OfferItemDto {
   @IsNumber({}, { message: "Miqdor raqam bo'lishi kerak" })
   @Min(0, { message: "Miqdor 0 dan kichik bo'lmasligi kerak" })
   quantity: number;
-
-  @ApiProperty({ example: 'id', description: 'Taminotchi ID' })
-  @IsString({ message: "supplier_id matn bo'lishi kerak" })
-  @IsNotEmpty({ message: "suplier_id bo'sh bo'lmasligi kerak" })
-  supplier_id: string;
 }
 
 export class CreateOfferDto {

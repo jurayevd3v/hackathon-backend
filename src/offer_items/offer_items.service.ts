@@ -121,35 +121,35 @@ export class OfferItemsService {
     };
   }
 
-  // async getPaginatedItemsBySupplier(
-  //   supplier_id: string,
-  //   status: string,
-  //   page = 1,
-  //   limit?: number,
-  // ) {
-  //   const safeLimit = limit && limit > 0 ? limit : 20;
-  //   const offset = (page - 1) * safeLimit;
+  async getPaginatedItemsBySupplier(
+    location_id: string,
+    status: string,
+    page = 1,
+    limit?: number,
+  ) {
+    const safeLimit = limit && limit > 0 ? limit : 20;
+    const offset = (page - 1) * safeLimit;
 
-  //   const { rows, count: total_count } =
-  //     await this.offerItemRepo.findAndCountAll({
-  //       where: { supplier_id, status, is_active: true },
-  //       include: [{ model: Offer }],
-  //       offset,
-  //       limit: safeLimit,
-  //       order: [['createdAt', 'DESC']],
-  //       distinct: true,
-  //     });
+    const { rows, count: total_count } =
+      await this.offerItemRepo.findAndCountAll({
+        where: { location_id, status, is_active: true },
+        include: [{ model: Offer }],
+        offset,
+        limit: safeLimit,
+        order: [['createdAt', 'DESC']],
+        distinct: true,
+      });
 
-  //   return {
-  //     data: rows,
-  //     meta: {
-  //       total_count,
-  //       page,
-  //       limit: safeLimit,
-  //       total_pages: Math.ceil(total_count / safeLimit),
-  //     },
-  //   };
-  // }
+    return {
+      data: rows,
+      meta: {
+        total_count,
+        page,
+        limit: safeLimit,
+        total_pages: Math.ceil(total_count / safeLimit),
+      },
+    };
+  }
 
   async getOfferItemById(id: string) {
     const offerItem = await this.offerItemRepo.findByPk(id, {

@@ -362,7 +362,7 @@ export class OffersService {
       }
 
       if (created_by && created_by.length > 0) {
-        offerWhere['created_by'] = created_by;
+        offerWhere['location_id'] = created_by;
       }
 
       const hasAddressFilter = !!normalizedAddress;
