@@ -8,7 +8,6 @@ import {
 import OpenAI from 'openai';
 import * as XLSX from 'xlsx';
 import { Pool } from 'pg';
-// import { Multer } from 'multer'; // Agar kerak bo'lsa
 
 // ─── Swagger tiplari ──────────────────────────────────────────────────────────
 
@@ -113,10 +112,10 @@ function errMsg(err: unknown): string {
 export class GrokService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(GrokService.name);
 
-  // OpenAI SDK — Grok API base URL bilan
+  // OpenAI SDK — Groq API base URL bilan
   private client = new OpenAI({
     apiKey: process.env.XAI_API_KEY,
-    baseURL: 'https://api.x.ai/v1',
+    baseURL: 'https://api.groq.com/openai/v1',
   });
 
   private pool!: Pool;
@@ -131,7 +130,8 @@ export class GrokService implements OnModuleInit, OnModuleDestroy {
   private readonly DOCS_TTL_MS = 30 * 60 * 1000;
 
   // Model tanlash — arzon model agentic vazifalar uchun yetarli
-  private readonly MODEL = process.env.GROK_MODEL || 'grok-4.3';
+  private readonly MODEL =
+    process.env.GROK_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -593,44 +593,48 @@ ${DB_SCHEMA_HINT}`;
       const assistantMsg = response.choices[0].message;
       currentMessages.push(assistantMsg);
 
-      const toolCalls = assistantMsg.tool_calls ?? [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolCalls: any[] = assistantMsg.tool_calls ?? [];
 
       // Parallel tool execution
-      const toolResults = await Promise.all(
-        toolCalls.map(async (tc) => {
-          let input: unknown;
-          try {
-            input = JSON.parse((tc as any).function.arguments);
-          } catch {
-            input = {};
-          }
+      const toolResults: OpenAI.ChatCompletionToolMessageParam[] =
+        await Promise.all(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          toolCalls.map(async (tc: any) => {
+            let input: unknown;
+            try {
+              input = JSON.parse(tc.function.arguments as string) as unknown;
+            } catch {
+              input = {};
+            }
 
-          const result = await this.executeTool(
-            (tc as any).function.name,
-            input,
-            token,
-          );
+            const result = await this.executeTool(
+              tc.function.name as string,
+              input,
+              token,
+            );
 
-          // Excel natijasini saqla
-          if (typeof result.excel_base64 === 'string') {
-            excelResult = {
-              excel_base64: result.excel_base64,
-              filename:
-                typeof result.filename === 'string'
-                  ? result.filename
-                  : 'export.xlsx',
-              rows_count:
-                typeof result.rows_count === 'number' ? result.rows_count : 0,
+            // Excel natijasini saqla
+            if (typeof result.excel_base64 === 'string') {
+              excelResult = {
+                excel_base64: result.excel_base64,
+                filename:
+                  typeof result.filename === 'string'
+                    ? result.filename
+                    : 'export.xlsx',
+                rows_count:
+                  typeof result.rows_count === 'number' ? result.rows_count : 0,
+              };
+            }
+
+            const toolMsg: OpenAI.ChatCompletionToolMessageParam = {
+              role: 'tool',
+              tool_call_id: tc.id,
+              content: JSON.stringify(result),
             };
-          }
-
-          return {
-            role: 'tool' as const,
-            tool_call_id: tc.id,
-            content: JSON.stringify(result),
-          };
-        }),
-      );
+            return toolMsg;
+          }),
+        );
 
       currentMessages.push(...toolResults);
 
@@ -723,7 +727,7 @@ keyin noaniq/yo'q maydonlarni alohida so'ra.`,
           blankrows: false,
         });
         rows.forEach((row, i) => {
-          excelText += `${i + 1}: ${row.map(cellToString).join(' | ')}\n`;
+          excelText += `${i + 1}: ${(row as string[]).map(cellToString).join(' | ')}\n`;
         });
       }
       userContent = `${userMessage}\n\nExcel fayl mazmuni:\n${excelText}`;
