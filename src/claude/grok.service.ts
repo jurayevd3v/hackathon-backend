@@ -309,8 +309,18 @@ Mavjud barcha endpointlar system prompt da ko'rsatilgan (Swagger dan avtomatik y
                 type: 'string',
                 description: 'Endpoint path, masalan: /api/offers',
               },
-              body: { type: 'object', description: 'Request body (POST/PUT)' },
-              params: { type: 'object', description: 'Query parametrlar' },
+              body: {
+                type: 'object',
+                description:
+                  'Request body (POST/PUT). MUHIM: bu maydon object bolishi SHART, JSON string emas! Masalan: {"key": "value"}',
+                additionalProperties: true,
+              },
+              params: {
+                type: 'object',
+                description:
+                  'Query parametrlar. Object formatida: {"page": "1"}',
+                additionalProperties: true,
+              },
             },
             required: ['method', 'path'],
           },
@@ -415,6 +425,16 @@ data — object array, har bir object bir qator bo'ladi.`,
         if (q) url += `?${q}`;
       }
 
+      // body string kelsa parse qilamiz (model xatosi uchun himoya)
+      let bodyData = input.body;
+      if (typeof bodyData === 'string') {
+        try {
+          bodyData = JSON.parse(bodyData) as Record<string, unknown>;
+        } catch {
+          bodyData = {};
+        }
+      }
+
       const res = await fetch(url, {
         method: input.method,
         headers: {
@@ -422,8 +442,8 @@ data — object array, har bir object bir qator bo'ladi.`,
           Authorization: `Bearer ${token}`,
         },
         body:
-          input.body && input.method !== 'GET'
-            ? JSON.stringify(input.body)
+          bodyData && input.method !== 'GET'
+            ? JSON.stringify(bodyData)
             : undefined,
       });
 
