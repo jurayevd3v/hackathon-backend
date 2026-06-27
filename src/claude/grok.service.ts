@@ -9,8 +9,6 @@ import OpenAI from 'openai';
 import * as XLSX from 'xlsx';
 import { Pool } from 'pg';
 
-// ─── Swagger tiplari ──────────────────────────────────────────────────────────
-
 interface SwaggerDoc {
   openapi?: string;
   servers?: Array<{ url: string }>;
@@ -49,8 +47,6 @@ interface SchemaObject {
   items?: SchemaObject;
 }
 
-// ─── Tool input tiplari ───────────────────────────────────────────────────────
-
 interface DbQueryInput {
   sql: string;
   params?: unknown[];
@@ -75,8 +71,6 @@ interface ExportExcelInput {
   columns?: ExcelColumn[];
 }
 
-// ─── Natija tiplari ───────────────────────────────────────────────────────────
-
 export interface ExcelResult {
   excel_base64: string;
   filename: string;
@@ -88,38 +82,30 @@ export interface ChatResponse {
   excel: ExcelResult | null;
 }
 
-// ─── DB schema hint ───────────────────────────────────────────────────────────
-
-const DB_SCHEMA_HINT = `
-PostgreSQL DB — faqat SELECT (read-only).
-Asosiy jadvallar:
-- locations (id, name, type, address, phone, is_active, is_contacted, parent_id, created_at)
-  * "type" ustuni: mijozlar, ta'minotchilar va boshqa turlarni ajratadi
-  * Ta'minotchi qidirish: WHERE name ILIKE '%...%' yoki type = 'supplier' kabi
-- users (id, full_name, username, role, location_id, created_at, is_login)
-- offers (id, location_id, status, total_sum, paid_sum, created_at, construction_site_name, note, address, is_logist, date)
-- offer_items (id, offer_id, product_name, quantity, unit, customer_price, cost_price, status)
-Har doim LIMIT qo'y. Hech qachon DROP, DELETE, UPDATE, INSERT yozma.
-`;
+const DB_SCHEMA_HINT = [
+  'PostgreSQL DB — faqat SELECT (read-only).',
+  'Jadvallar:',
+  '- locations (id, name, type, address, phone, is_active, is_contacted, parent_id, created_at)',
+  '- users (id, full_name, username, role, location_id, created_at, is_login)',
+  '- offers (id, location_id, status, total_sum, paid_sum, created_at, construction_site_name, note, address, is_logist, date)',
+  '- offer_items (id, offer_id, product_name, quantity, unit, customer_price, cost_price, status)',
+  'Har doim LIMIT qoy. Hech qachon DROP/DELETE/UPDATE/INSERT yozma.',
+].join('\n');
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// ─── Service ──────────────────────────────────────────────────────────────────
-
 @Injectable()
 export class GrokService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(GrokService.name);
 
-  // OpenAI SDK — Groq API base URL bilan
   private client = new OpenAI({
     apiKey: process.env.XAI_API_KEY,
     baseURL: 'https://api.groq.com/openai/v1',
   });
 
   private pool!: Pool;
-
   private apiDocs = '';
   private apiDocsLoadedAt = 0;
   private refreshTimer?: NodeJS.Timeout;
@@ -128,12 +114,8 @@ export class GrokService implements OnModuleInit, OnModuleDestroy {
     process.env.API_BASE_URL || 'https://dev.udsgroup.uz';
   private readonly SWAGGER_URL = `${this.API_BASE}/api/docs-json`;
   private readonly DOCS_TTL_MS = 30 * 60 * 1000;
-
-  // Model tanlash — arzon model agentic vazifalar uchun yetarli
   private readonly MODEL =
     process.env.GROK_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
-
-  // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
   async onModuleInit(): Promise<void> {
     this.pool = new Pool({
@@ -141,12 +123,10 @@ export class GrokService implements OnModuleInit, OnModuleDestroy {
       max: 5,
       idleTimeoutMillis: 30000,
     });
-
     await this.refreshApiDocs();
-
     this.refreshTimer = setInterval(() => {
       void this.refreshApiDocs().catch((e: unknown) =>
-        this.logger.error(`Swagger refresh xatosi: ${errMsg(e)}`),
+        this.logger.error('Swagger refresh xatosi: ' + errMsg(e)),
       );
     }, this.DOCS_TTL_MS);
   }
@@ -156,8 +136,6 @@ export class GrokService implements OnModuleInit, OnModuleDestroy {
     await this.pool?.end();
   }
 
-  // ─── Swagger docs ────────────────────────────────────────────────────────────
-
   async refreshApiDocs(): Promise<{
     ok: boolean;
     endpoints: number;
@@ -165,21 +143,24 @@ export class GrokService implements OnModuleInit, OnModuleDestroy {
   }> {
     try {
       const res = await fetch(this.SWAGGER_URL);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const swagger = (await res.json()) as SwaggerDoc;
       this.apiDocs = this.swaggerToText(swagger);
       this.apiDocsLoadedAt = Date.now();
-
       const endpoints = Object.keys(swagger.paths ?? {}).length;
       this.logger.log(
-        `Swagger yuklandi: ${endpoints} path, ${this.apiDocs.length} belgi`,
+        'Swagger yuklandi: ' +
+          endpoints +
+          ' path, ' +
+          this.apiDocs.length +
+          ' belgi',
       );
       return { ok: true, endpoints, chars: this.apiDocs.length };
     } catch (err: unknown) {
-      this.logger.error(`Swagger yuklab bolmadi: ${errMsg(err)}`);
+      this.logger.error('Swagger yuklab bolmadi: ' + errMsg(err));
       if (!this.apiDocs) {
-        this.apiDocs = `API dokumentatsiyani yuklab bolmadi (${this.SWAGGER_URL}). Faqat db_query ishlatilsin.`;
+        this.apiDocs =
+          'API dokumentatsiyani yuklab bolmadi. Faqat db_query ishlatilsin.';
       }
       return { ok: false, endpoints: 0, chars: this.apiDocs.length };
     }
@@ -187,7 +168,7 @@ export class GrokService implements OnModuleInit, OnModuleDestroy {
 
   private swaggerToText(swagger: SwaggerDoc): string {
     const baseUrl = swagger.servers?.[0]?.url ?? this.API_BASE;
-    const lines: string[] = [`BASE URL: ${baseUrl}`, ''];
+    const lines: string[] = ['BASE URL: ' + baseUrl, ''];
     const byTag: Record<string, string[]> = {};
     const paths = swagger.paths ?? {};
     const methods: HttpMethod[] = ['get', 'post', 'put', 'delete', 'patch'];
@@ -203,19 +184,26 @@ export class GrokService implements OnModuleInit, OnModuleDestroy {
         const bodySchema =
           op.requestBody?.content?.['application/json']?.schema;
         const bodyStr = bodySchema
-          ? ` ${this.formatSchema(bodySchema, swagger)}`
+          ? ' ' + this.formatSchema(bodySchema, swagger)
           : '';
         const queries = (op.parameters ?? [])
           .filter((p) => p.in === 'query')
-          .map((p) => (p.required ? p.name : `${p.name}?`));
-        const queryStr = queries.length ? `?${queries.join('&')}` : '';
-        const line = `${method.toUpperCase().padEnd(6)} ${path}${queryStr} - ${summary}${bodyStr}`;
+          .map((p) => (p.required ? p.name : p.name + '?'));
+        const queryStr = queries.length ? '?' + queries.join('&') : '';
+        const line =
+          method.toUpperCase().padEnd(6) +
+          ' ' +
+          path +
+          queryStr +
+          ' - ' +
+          summary +
+          bodyStr;
         (byTag[tag] ||= []).push(line);
       }
     }
 
     for (const tag of Object.keys(byTag)) {
-      lines.push(`=== ${tag.toUpperCase()} ===`);
+      lines.push('=== ' + tag.toUpperCase() + ' ===');
       lines.push(...byTag[tag], '');
     }
     return lines.join('\n');
@@ -239,7 +227,7 @@ export class GrokService implements OnModuleInit, OnModuleDestroy {
     }
     if (schema.enum) return schema.enum.map((v) => String(v)).join('|');
     if (schema.type === 'array')
-      return `${this.formatSchema(schema.items, swagger, depth + 1)}[]`;
+      return this.formatSchema(schema.items, swagger, depth + 1) + '[]';
     if (schema.properties) {
       const required = new Set(schema.required ?? []);
       const fields = Object.entries(schema.properties)
@@ -254,14 +242,12 @@ export class GrokService implements OnModuleInit, OnModuleDestroy {
                   ? 'array'
                   : (v.type ?? (v.$ref ? 'object' : 'any'))
               : this.formatSchema(v, swagger, depth + 1);
-          return `${k}${opt}:${type}`;
+          return k + opt + ':' + type;
         });
-      return `{${fields.join(', ')}}`;
+      return '{' + fields.join(', ') + '}';
     }
     return schema.type ?? 'any';
   }
-
-  // ─── Tools (OpenAI format) ───────────────────────────────────────────────────
 
   private getTools(): OpenAI.ChatCompletionTool[] {
     return [
@@ -269,21 +255,19 @@ export class GrokService implements OnModuleInit, OnModuleDestroy {
         type: 'function',
         function: {
           name: 'db_query',
-          description: `PostgreSQL dan ma'lumot o'qish. Faqat SELECT.
-Murakkab JOIN, GROUP BY, tahlil, top N ro'yxatlar uchun ishlat.
-API da yo'q so'rovlar uchun ham ishlat.
-Hech qachon INSERT/UPDATE/DELETE/DROP yozma.`,
+          description:
+            'PostgreSQL dan malumot oqish. Faqat SELECT. Location, user, offer qidirish uchun ishlat. Hech qachon INSERT/UPDATE/DELETE/DROP yozma.',
           parameters: {
             type: 'object',
             properties: {
               sql: {
                 type: 'string',
-                description: "SELECT so'rovi. Har doim LIMIT qo'y (max 500)",
+                description: 'SELECT sorovi. Har doim LIMIT qoy (max 500)',
               },
               params: {
                 type: 'array',
-                description: 'Parametrlar [$1, $2 uchun]',
                 items: { type: 'string' },
+                description: 'Parametrlar [$1, $2 uchun]',
               },
             },
             required: ['sql'],
@@ -294,16 +278,14 @@ Hech qachon INSERT/UPDATE/DELETE/DROP yozma.`,
         type: 'function',
         function: {
           name: 'api_call',
-          description: `API ga istalgan so'rov yuborish.
-Yozish, o'zgartirish, o'chirish, yaratish amallari uchun ishlat.
-Mavjud barcha endpointlar system prompt da ko'rsatilgan (Swagger dan avtomatik yuklangan).`,
+          description:
+            'API ga sorov yuborish. Yaratish, ozgartirish, ochirish uchun ishlat. body va params faqat kerak bolsa qosh, aks holda umuman qoshma.',
           parameters: {
             type: 'object',
             properties: {
               method: {
                 type: 'string',
                 enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-                description: 'HTTP metod',
               },
               path: {
                 type: 'string',
@@ -311,15 +293,13 @@ Mavjud barcha endpointlar system prompt da ko'rsatilgan (Swagger dan avtomatik y
               },
               body: {
                 type: 'object',
-                description:
-                  "Request body (POST/PUT). Object formatida yubor. Agar kerak bo'lmasa bu maydonni umuman qo'shma.",
                 additionalProperties: true,
+                description: 'Request body. Object bolishi shart.',
               },
               params: {
                 type: 'object',
-                description:
-                  "Query parametrlar. Object formatida: {page: 1}. Agar kerak bo'lmasa bu maydonni umuman qo'shma.",
                 additionalProperties: true,
+                description: 'Query parametrlar. Object formatida.',
               },
             },
             required: ['method', 'path'],
@@ -330,21 +310,19 @@ Mavjud barcha endpointlar system prompt da ko'rsatilgan (Swagger dan avtomatik y
         type: 'function',
         function: {
           name: 'export_excel',
-          description: `Ma'lumotlarni Excel (.xlsx) ga aylantirish.
-Foydalanuvchi "excel qilib ber", "yuklab ber" deganda ishlat.
-data — object array, har bir object bir qator bo'ladi.`,
+          description:
+            'Malumotlarni Excel (.xlsx) ga aylantirish. Foydalanuvchi excel yoki yuklab ber deganda ishlat.',
           parameters: {
             type: 'object',
             properties: {
               data: {
                 type: 'array',
-                description: "Excel ga yoziladigan ma'lumotlar",
                 items: { type: 'object' },
+                description: 'Excel ga yoziladigan malumotlar',
               },
-              sheet_name: { type: 'string', description: 'Excel varaq nomi' },
+              sheet_name: { type: 'string' },
               columns: {
                 type: 'array',
-                description: 'Ustun nomlari va kengligi (ixtiyoriy)',
                 items: {
                   type: 'object',
                   properties: {
@@ -362,8 +340,6 @@ data — object array, har bir object bir qator bo'ladi.`,
     ];
   }
 
-  // ─── Tool executor ───────────────────────────────────────────────────────────
-
   private async executeTool(
     name: string,
     input: unknown,
@@ -377,7 +353,7 @@ data — object array, har bir object bir qator bo'ladi.`,
       case 'export_excel':
         return this.runExportExcel(input as ExportExcelInput);
       default:
-        return { error: `Noma'lum tool: ${name}` };
+        return { error: "Noma'lum tool: " + name };
     }
   }
 
@@ -393,21 +369,16 @@ data — object array, har bir object bir qator bo'ladi.`,
       'TRUNCATE',
       'ALTER',
     ];
-    // WITH ... SELECT ruxsat beriladi, lekin WITH ... DELETE emas
     const firstWord = upperSql.replace(/\s+/g, ' ').split(' ')[0];
-    if (forbidden.includes(firstWord)) {
-      return { error: "Faqat SELECT so'rovlarga ruxsat bor" };
-    }
-    // Ichiga yashirilgan yozuvchi operatsiyalar
-    if (forbidden.slice(1).some((kw) => upperSql.includes(kw + ' '))) {
+    if (forbidden.includes(firstWord))
+      return { error: 'Faqat SELECT sorovlarga ruxsat bor' };
+    if (forbidden.slice(1).some((kw) => upperSql.includes(kw + ' ')))
       return { error: 'SQL da yozuvchi operatsiyalar taqiqlangan' };
-    }
-
     try {
       const result = await this.pool.query(input.sql, input.params ?? []);
       return { rows: result.rows, count: result.rowCount };
     } catch (err: unknown) {
-      return { error: `DB xatosi: ${errMsg(err)}` };
+      return { error: 'DB xatosi: ' + errMsg(err) };
     }
   }
 
@@ -416,34 +387,30 @@ data — object array, har bir object bir qator bo'ladi.`,
     token: string,
   ): Promise<Record<string, unknown>> {
     try {
-      let url = `${this.API_BASE}${input.path}`;
-      if (input.params) {
+      let url = this.API_BASE + input.path;
+      if (input.params && input.params !== null) {
         const entries = Object.entries(input.params)
           .filter(([, v]) => v !== undefined && v !== null)
           .map(([k, v]) => [k, String(v)] as [string, string]);
         const q = new URLSearchParams(entries).toString();
-        if (q) url += `?${q}`;
+        if (q) url += '?' + q;
       }
 
-      // body/params null yoki string kelsa handle qilamiz
-      let bodyData = input.body;
+      let bodyData: unknown = input.body;
       if (bodyData === null) bodyData = undefined;
       if (typeof bodyData === 'string') {
         try {
-          bodyData = JSON.parse(bodyData) as Record<string, unknown>;
+          bodyData = JSON.parse(bodyData);
         } catch {
           bodyData = undefined;
         }
-      }
-      if (input.params === null) {
-        input.params = undefined;
       }
 
       const res = await fetch(url, {
         method: input.method,
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: 'Bearer ' + token,
         },
         body:
           bodyData && input.method !== 'GET'
@@ -452,20 +419,18 @@ data — object array, har bir object bir qator bo'ladi.`,
       });
 
       const data: unknown = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        return { error: `API ${res.status}: ${JSON.stringify(data)}` };
-      }
+      if (!res.ok)
+        return { error: 'API ' + res.status + ': ' + JSON.stringify(data) };
       return (data as Record<string, unknown>) ?? {};
     } catch (err: unknown) {
-      return { error: `Tarmoq xatosi: ${errMsg(err)}` };
+      return { error: 'Tarmoq xatosi: ' + errMsg(err) };
     }
   }
 
   private runExportExcel(input: ExportExcelInput): Record<string, unknown> {
     try {
-      if (!input.data?.length) return { error: "Ma'lumot bo'sh" };
-
-      const sheetName = (input.sheet_name ?? "Ma'lumotlar").slice(0, 31);
+      if (!input.data?.length) return { error: 'Malumot bosh' };
+      const sheetName = (input.sheet_name ?? 'Malumotlar').slice(0, 31);
       const columns: ExcelColumn[] =
         input.columns ??
         Object.keys(input.data[0]).map((k) => ({
@@ -473,137 +438,77 @@ data — object array, har bir object bir qator bo'ladi.`,
           header: k,
           width: 22,
         }));
-
       const headers = columns.map((c) => c.header ?? c.key);
       const aoa: unknown[][] = [headers];
-      for (const row of input.data) {
+      for (const row of input.data)
         aoa.push(columns.map((c) => row[c.key] ?? ''));
-      }
-
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       ws['!cols'] = columns.map((c) => ({ wch: c.width ?? 22 }));
       ws['!rows'] = [{ hpt: 22 }];
-
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
-
       const buffer = XLSX.write(wb, {
         type: 'buffer',
         bookType: 'xlsx',
       }) as Buffer;
-
       const result: ExcelResult = {
         excel_base64: buffer.toString('base64'),
-        filename: `${(input.sheet_name ?? 'malumotlar').replace(/\s/g, '_')}_${Date.now()}.xlsx`,
+        filename:
+          (input.sheet_name ?? 'malumotlar').replace(/\s/g, '_') +
+          '_' +
+          Date.now() +
+          '.xlsx',
         rows_count: input.data.length,
       };
       return result as unknown as Record<string, unknown>;
     } catch (err: unknown) {
-      return { error: `Excel xatosi: ${errMsg(err)}` };
+      return { error: 'Excel xatosi: ' + errMsg(err) };
     }
   }
-
-  // ─── System prompt ───────────────────────────────────────────────────────────
 
   private buildSystemPrompt(): string {
-    return `Sen USD ERP tizimining AI yordamchisan.
-
-QOIDALAR:
-- Har doim O'ZBEK TILIDA javob ber
-- Qisqa va aniq bo'l
-- Noaniqlik bo'lsa — aniqlashtir, kerakli ma'lumotlarni so'ra
-- Muhim o'zgartirish (o'chirish, status o'zgartirish) oldidan tasdiqlat: "Rostdan ham bajarsinmi?"
-- Xatolikda tushunarli tushuntir
-
-QAYSI TOOL NI QACHON ISHLATISH:
-1. db_query  — o'qish, tahlil, top N, murakkab so'rovlar, API da yo'q so'rovlar
-2. api_call  — yaratish, o'zgartirish, o'chirish amallari (POST/PUT/DELETE)
-3. export_excel — "excel qilib ber", "yuklab ber", "fayl sifatida" so'rovlarda
-
-STRATEGIYA:
-- Avval db_query bilan ma'lumot ol → keyin tahlil qil yoki api_call bilan amal bajar
-- Excel kerak bo'lsa: avval db_query → natijani export_excel ga ber
-
-JUDA MUHIM — API_CALL HAQIDA:
-- api_call da params va body maydonlarini faqat kerak bo'lganda qo'sh, aks holda QO'SHMA (null yuborme)
-- Sen api_call tool orqali POST, PUT, DELETE amallarini BAJARISHGA QODIRSAN
-- "yaratish", "qo'shish", "yangilash", "o'chirish" so'rovlarida DOIM api_call ishlat
-- Hech qachon "menda bu funksiya yo'q" yoki "curl bilan qiling" dema
-- Foydalanuvchi tasdiqlasa — darhol api_call chaqir, izoh yozma
-- Location yaratish: POST /api/location {name, type, address?, phone?, is_active?, is_contacted?}
-- Offer yaratish: POST /api/offers {location_id, items: [...]}
-- Swagger da ko'rsatilgan BARCHA endpointlarni ishlatishga ruxsating bor
-
-OFFER YARATISH — MAJBURIY QADAMLAR:
-
-QADAM 1 — LOCATION TOPISH (DOIM db_query ishlat):
-- Foydalanuvchi location nomi aytsa → DARHOL db_query chaqir:
-  SELECT id, name FROM locations WHERE name ILIKE '%OBIDJON%' LIMIT 10
-- Natija bo'sh bo'lsa → boshqa kalit so'z bilan qayta qidir:
-  SELECT id, name FROM locations WHERE name ILIKE '%AKMAL%' LIMIT 10
-- Hali ham topilmasa → foydalanuvchiga ro'yxat ko'rsat:
-  SELECT id, name FROM locations LIMIT 20
-- location_id TOPILMAGUNCHA foydalanuvchidan ID so'rama, o'zing qidir!
-
-QADAM 2 — MAHSULOT MA'LUMOTLARI:
-- product_name, quantity, unit aniq bo'lsa — customer_price va cost_price so'ra
-- Narx ko'rsatilmagan bo'lsa so'ra
-
-QADAM 3 — OFFER YARATISH:
-- location_id va items to'liq bo'lganda → api_call POST /api/offers
-- Boshqa hech narsa so'rama, darhol yarat
-
-RASM ORQALI OFFER:
-- Rasmdan mahsulot, miqdor, birlik o'qi
-- Noaniq bo'lsa so'ra, taxmin qilma
-
-MUHIM — OFFER ITEM DA supplier_id YO'Q:
-- offer_items da supplier_id maydoni mavjud emas
-- Foydalanuvchi ta'minotchi nomi aytsa — db_query bilan locations dan qidiring,
-  lekin bu offer_item ga kirmaydi, faqat ma'lumot uchun
-- offer_item faqat: product_name, quantity, unit, customer_price, cost_price
-
-OFFER YARATISH BODY FORMATI (POST /api/offers):
-{
-  "location_id": "uuid",
-  "construction_site_name": "ixtiyoriy",
-  "note": "ixtiyoriy",
-  "address": "ixtiyoriy",
-  "is_logist": false,
-  "date": "2026-01-01T00:00:00Z",
-  "items": [
-    {
-      "product_name": "Mahsulot nomi",
-      "quantity": 10,
-      "unit": "dona",
-      "customer_price": 100000,
-      "cost_price": 80000
-    }
-  ]
-}
-
-OFFER ITEM QO'SHISH (POST /api/offer-items):
-{
-  "offer_id": "uuid",
-  "location_id": "uuid",
-  "items": [
-    {
-      "product_name": "Mahsulot nomi",
-      "quantity": 10,
-      "unit": "dona",
-      "customer_price": 100000,
-      "cost_price": 80000
-    }
-  ]
-}
-
-=== MAVJUD API ENDPOINTLAR (Swagger dan avtomatik yuklangan) ===
-${this.apiDocs}
-
-${DB_SCHEMA_HINT}`;
+    const lines = [
+      "Sen USD ERP tizimining AI yordamchisan. Faqat O'ZBEK TILIDA javob ber.",
+      '',
+      '## QOIDALAR',
+      '- Foydalanuvchi amal sorasa DARHOL tool chaqir, ortiqcha savol berma',
+      "- 'Rostdan ham bajarsinmi?' FAQAT ochirish va status ozgartirish oldidan",
+      "- Hech qachon 'menda funksiya yoq' yoki 'curl bilan qiling' dema",
+      '- db_query → malumot oqish; api_call → yaratish/ozgartirish/ochirish; export_excel → excel',
+      '',
+      '## OFFER YARATISH — QATIY ALGORITM',
+      '',
+      '### QADAM 1: Location topish (DOIM db_query bilan)',
+      'Foydalanuvchi location nomi aytsa — DARHOL qidir:',
+      "  SELECT id, name FROM locations WHERE name ILIKE '%[nom]%' LIMIT 10",
+      'Topilmasa — nomni boshqacha yoz:',
+      "  SELECT id, name FROM locations WHERE name ILIKE '%[birinchi soz]%' LIMIT 10",
+      'Hali topilmasa — royxat korsatib tanlat:',
+      '  SELECT id, name FROM locations ORDER BY name LIMIT 30',
+      "HECH QACHON foydalanuvchidan location ID sorama — o'zing topib ol!",
+      '',
+      '### QADAM 2: Mahsulot malumotlari',
+      'Kerak: product_name, quantity, unit, customer_price, cost_price',
+      'Faqat YOQ narsani sor. Bor bolsa SORMA.',
+      '',
+      '### QADAM 3: Offer yaratish',
+      'location_id va items tayyor bolsa — DARHOL POST /api/offers:',
+      '{"location_id":"uuid","items":[{"product_name":"...","quantity":1,"unit":"dona","customer_price":0,"cost_price":0}]}',
+      '',
+      '## LOCATION YARATISH',
+      'POST /api/location',
+      '{"name":"...","type":"...","address":"...","phone":"..."}',
+      '',
+      '## API_CALL QOIDASI',
+      'params va body kerak bolmasa — bu maydonlarni UMUMAN QOSHMA (null yuborme)',
+      '',
+      '=== API ENDPOINTLAR ===',
+      this.apiDocs,
+      '',
+      DB_SCHEMA_HINT,
+    ];
+    return lines.join('\n');
   }
-
-  // ─── Agent loop (OpenAI format) ──────────────────────────────────────────────
 
   private async runAgentLoop(
     messages: OpenAI.ChatCompletionMessageParam[],
@@ -611,7 +516,6 @@ ${DB_SCHEMA_HINT}`;
   ): Promise<ChatResponse> {
     let excelResult: ExcelResult | null = null;
 
-    // System prompt ni messages boshiga qo'shamiz
     const fullMessages: OpenAI.ChatCompletionMessageParam[] = [
       { role: 'system', content: this.buildSystemPrompt() },
       ...messages,
@@ -627,7 +531,6 @@ ${DB_SCHEMA_HINT}`;
 
     const currentMessages = [...fullMessages];
 
-    // Tool use loop
     while (response.choices[0]?.finish_reason === 'tool_calls') {
       const assistantMsg = response.choices[0].message;
       currentMessages.push(assistantMsg);
@@ -635,7 +538,6 @@ ${DB_SCHEMA_HINT}`;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolCalls: any[] = assistantMsg.tool_calls ?? [];
 
-      // Parallel tool execution
       const toolResults: OpenAI.ChatCompletionToolMessageParam[] =
         await Promise.all(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -653,7 +555,6 @@ ${DB_SCHEMA_HINT}`;
               token,
             );
 
-            // Excel natijasini saqla
             if (typeof result.excel_base64 === 'string') {
               excelResult = {
                 excel_base64: result.excel_base64,
@@ -668,7 +569,7 @@ ${DB_SCHEMA_HINT}`;
 
             const toolMsg: OpenAI.ChatCompletionToolMessageParam = {
               role: 'tool',
-              tool_call_id: tc.id,
+              tool_call_id: tc.id as string,
               content: JSON.stringify(result),
             };
             return toolMsg;
@@ -689,8 +590,6 @@ ${DB_SCHEMA_HINT}`;
     const text = response.choices[0]?.message?.content ?? '';
     return { message: text, excel: excelResult };
   }
-
-  // ─── Public API ──────────────────────────────────────────────────────────────
 
   async chat(
     userMessage: string,
@@ -720,12 +619,15 @@ ${DB_SCHEMA_HINT}`;
     let userContent: OpenAI.ChatCompletionMessageParam['content'];
 
     if (isImage) {
-      // Grok ham OpenAI kabi vision qo'llab-quvvatlaydi
       userContent = [
         {
           type: 'image_url',
           image_url: {
-            url: `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
+            url:
+              'data:' +
+              file.mimetype +
+              ';base64,' +
+              file.buffer.toString('base64'),
             detail: 'high',
           },
         },
@@ -733,18 +635,13 @@ ${DB_SCHEMA_HINT}`;
           type: 'text',
           text:
             userMessage ||
-            `Bu rasmdan mahsulotlar ro'yxatini ajrat.
-Har bir mahsulot uchun aniqlashga harakat qil:
-- product_name (mahsulot nomi)
-- quantity (miqdor, sonli qiymat)
-- unit (o'lchov birligi: dona, kg, m², m, litr va h.k.)
-- customer_price (mijoz narxi)
-- cost_price (tan narx)
-
-MUHIM: Agar biror maydon rasmda ko'rsatilmagan yoki o'qib bo'lmasa — 
-o'zing taxmin qilma, foydalanuvchidan so'ra.
-Aniq o'qilgan ma'lumotlarni ro'yxat ko'rinishida ko'rsat, 
-keyin noaniq/yo'q maydonlarni alohida so'ra.`,
+            [
+              'Bu rasmdan mahsulotlar royxatini ajrat.',
+              'Har bir mahsulot uchun: product_name, quantity, unit, customer_price, cost_price',
+              'Agar biror maydon rasmda korsatilmagan yoki oqib bolmasa — taxmin qilma, sorа.',
+              'Aniq oqilgan malumotlarni royxat korinishida korsat,',
+              'keyin noaniq/yoq maydonlarni alohida sor.',
+            ].join('\n'),
         },
       ];
     } else if (isExcel) {
@@ -760,18 +657,23 @@ keyin noaniq/yo'q maydonlarni alohida so'ra.`,
       let excelText = '';
       for (const sheetName of workbook.SheetNames) {
         const ws = workbook.Sheets[sheetName];
-        excelText += `\n=== ${sheetName} ===\n`;
+        excelText += '\n=== ' + sheetName + ' ===\n';
         const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, {
           header: 1,
           blankrows: false,
         });
         rows.forEach((row, i) => {
-          excelText += `${i + 1}: ${(row as string[]).map(cellToString).join(' | ')}\n`;
+          excelText += i + 1 + ': ' + row.map(cellToString).join(' | ') + '\n';
         });
       }
-      userContent = `${userMessage}\n\nExcel fayl mazmuni:\n${excelText}`;
+      userContent = userMessage + '\n\nExcel fayl mazmuni:\n' + excelText;
     } else {
-      userContent = `${userMessage}\n\nFayl: ${file.originalname}\nMazmun:\n${file.buffer.toString('utf-8')}`;
+      userContent =
+        userMessage +
+        '\n\nFayl: ' +
+        file.originalname +
+        '\nMazmun:\n' +
+        file.buffer.toString('utf-8');
     }
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
@@ -781,8 +683,6 @@ keyin noaniq/yo'q maydonlarni alohida so'ra.`,
 
     return this.runAgentLoop(messages, token);
   }
-
-  // ─── Util ────────────────────────────────────────────────────────────────────
 
   getApiDocsInfo(): {
     loadedAt: string | null;
