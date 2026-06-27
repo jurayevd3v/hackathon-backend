@@ -49,23 +49,6 @@ export class OffersController {
     return this.offersService.createOffer(dto, req.user.id);
   }
 
-  @ApiOperation({ summary: "Created bo'yicha offerlarni sahifalash" })
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  @Get('created')
-  getPaginatedOffersByCreated(
-    @Req() req: Request & { user: JwtPayload; clientIp: string },
-    @Query('page') page: number,
-    @Query('limit') limit?: number,
-  ) {
-    return this.offersService.getPaginatedOffersByCreated(
-      req.user.id,
-      page,
-      limit,
-    );
-  }
-
   @ApiOperation({ summary: "Status bo'yicha offerlarni sahifalash" })
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @ApiQuery({ name: 'status', required: true })
