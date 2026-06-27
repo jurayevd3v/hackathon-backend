@@ -20,6 +20,7 @@ import { LocalProductsModule } from './local_products/local_products.module';
 import { OffersModule } from './offers/offers.module';
 import { OfferItemsModule } from './offer_items/offer_items.module';
 import { LocalProduct } from './local_products/models/local_product.model';
+import { ClaudeModule } from './claude/claude.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { LocalProduct } from './local_products/models/local_product.model';
     LocalProductsModule,
     OffersModule,
     OfferItemsModule,
+    ClaudeModule,
   ],
   controllers: [],
   providers: [

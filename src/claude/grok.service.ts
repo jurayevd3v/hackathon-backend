@@ -600,12 +600,16 @@ ${DB_SCHEMA_HINT}`;
         toolCalls.map(async (tc) => {
           let input: unknown;
           try {
-            input = JSON.parse(tc.function.arguments);
+            input = JSON.parse((tc as any).function.arguments);
           } catch {
             input = {};
           }
 
-          const result = await this.executeTool(tc.function.name, input, token);
+          const result = await this.executeTool(
+            (tc as any).function.name,
+            input,
+            token,
+          );
 
           // Excel natijasini saqla
           if (typeof result.excel_base64 === 'string') {
@@ -719,7 +723,7 @@ keyin noaniq/yo'q maydonlarni alohida so'ra.`,
           blankrows: false,
         });
         rows.forEach((row, i) => {
-          excelText += `${i + 1}: ${(row as unknown[]).map(cellToString).join(' | ')}\n`;
+          excelText += `${i + 1}: ${row.map(cellToString).join(' | ')}\n`;
         });
       }
       userContent = `${userMessage}\n\nExcel fayl mazmuni:\n${excelText}`;
