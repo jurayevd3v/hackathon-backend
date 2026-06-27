@@ -309,6 +309,7 @@ export class OfferItemsService {
 
     await item.update({
       selected_variant_id: variant_id,
+      location_id: variant.factory_id,
       selected_product_name: variant.product_name,
       cost_price: variant.cost_price,
       sale_price: variant.sale_price,
