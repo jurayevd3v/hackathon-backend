@@ -10,17 +10,23 @@ import { UpdateOfferDto } from './dto/update-offer.dto';
 import { UpdateOfferStatusDto } from './dto/update-offer-status.dto';
 import { InjectConnection, InjectModel } from '@nestjs/sequelize';
 import { Offer } from './models/offer.model';
-import { OfferItem } from '../offer_items/models/offer_item.model';
+import {
+  OfferItem,
+  OfferItemVariant,
+} from '../offer_items/models/offer_item.model';
 import { Sequelize } from 'sequelize-typescript';
 import { Location } from '../locations/models/location.model';
 import { UpdateOfferPaidSumDto } from './dto/update-offer-paid-sum.dto';
-import { Op, WhereOptions } from 'sequelize';
+import { Includeable, literal, Op, WhereOptions } from 'sequelize';
 import { OFFER_STATUS_TRANSITIONS } from './constants/offer-status-transitions';
 import { JwtPayload } from '../common/guards/jwt-auth.guard';
 import { User } from '../user/models/user.model';
 import { OfferStatus } from '../common/enums/offer-status.enum';
 import { OfferItemStatus } from '../common/enums/offer-item-status.enum';
 import { PaymentStatus } from '../common/enums/payment-status.enum';
+import { LocalProduct } from '../local_products/models/local_product.model';
+import { GeocodeService } from '../common/geocode/service';
+import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_LIMIT = 15;
 const MAX_LIMIT = 100;
@@ -48,7 +54,10 @@ export class OffersService {
   constructor(
     @InjectModel(Offer) private readonly offerRepo: typeof Offer,
     @InjectModel(OfferItem) private readonly offerItemRepo: typeof OfferItem,
+    @InjectModel(LocalProduct)
+    private readonly localProductRepo: typeof LocalProduct,
     @InjectConnection() private readonly sequelize: Sequelize,
+    private readonly geocodeService: GeocodeService,
   ) {}
 
   async createOffer(dto: CreateOfferDto, user_id: string) {
@@ -56,10 +65,12 @@ export class OffersService {
 
     try {
       const { items, ...offerData } = dto;
-      if (offerData.construction_site_name)
+
+      if (offerData.construction_site_name) {
         offerData.construction_site_name = this.normalizeName(
           offerData.construction_site_name,
         );
+      }
 
       const now = new Date();
       const year = now.getFullYear();
@@ -93,11 +104,22 @@ export class OffersService {
         { transaction },
       );
 
+      const variantsByIndex = await Promise.all(
+        items.map((item) =>
+          this.findVariantsForItem(
+            item.product_name,
+            item.quantity,
+            offerData.address ?? '',
+          ).catch(() => [] as OfferItemVariant[]),
+        ),
+      );
+
       await this.offerItemRepo.bulkCreate(
-        items.map((item) => ({
+        items.map((item, i) => ({
           ...item,
           offer_id: offer.id,
           sale_price: item.cost_price,
+          variants: variantsByIndex[i].length ? variantsByIndex[i] : undefined,
         })),
         { transaction },
       );
@@ -116,6 +138,119 @@ export class OffersService {
         'Offer yaratishda xatolik yuz berdi',
       );
     }
+  }
+
+  private selectPrice(
+    prices: LocalProduct['prices'],
+    quantity: number,
+  ): number {
+    const { alone, average, wholesale } = prices ?? {};
+
+    const tiers: { maxQty: number; price: number }[] = [];
+
+    if (alone?.price != null && alone?.quantity != null) {
+      tiers.push({ maxQty: alone.quantity, price: alone.price });
+    }
+    if (average?.price != null && average?.quantity != null) {
+      tiers.push({ maxQty: average.quantity, price: average.price });
+    }
+    if (wholesale?.price != null) {
+      tiers.push({ maxQty: Infinity, price: wholesale.price });
+    }
+
+    for (const tier of tiers) {
+      if (quantity <= tier.maxQty) {
+        return tier.price;
+      }
+    }
+
+    return average?.price ?? alone?.price ?? wholesale?.price ?? 0;
+  }
+
+  private async findVariantsForItem(
+    productName: string,
+    quantity: number,
+    offerAddress: string,
+  ): Promise<OfferItemVariant[]> {
+    let offerLat: number | null = null;
+    let offerLng: number | null = null;
+
+    if (offerAddress?.trim()) {
+      try {
+        const coords = await this.geocodeService.geocodeAddress(offerAddress);
+        offerLat = coords.lat;
+        offerLng = coords.lng;
+      } catch {
+        // geocode ishlamasa faqat narx bo'yicha sort
+      }
+    }
+
+    const searchTerm = this.normalizeName(productName.trim());
+    const nameVariants = this.getLocalSearchVariants(searchTerm);
+
+    const distanceLiteral =
+      offerLat !== null && offerLng !== null
+        ? literal(`
+            6371 * acos(
+              LEAST(1.0, GREATEST(-1.0,
+                cos(radians(${offerLat})) * cos(radians("location"."lat"))
+                * cos(radians("location"."lng") - radians(${offerLng}))
+                + sin(radians(${offerLat})) * sin(radians("location"."lat"))
+              ))
+            )
+          `)
+        : null;
+
+    const products = await this.localProductRepo.findAll({
+      attributes: {
+        include: distanceLiteral ? [[distanceLiteral, 'distance']] : [],
+      },
+      where: {
+        [Op.or]: nameVariants.map((v) => ({
+          name: { [Op.iLike]: `%${v}%` },
+        })),
+      },
+      include: [
+        {
+          model: Location,
+          as: 'location',
+          attributes: ['id', 'name', 'address', 'lat', 'lng'],
+          required: true,
+        },
+      ] as Includeable[],
+      order: distanceLiteral
+        ? [[literal('distance'), 'ASC']]
+        : [['createdAt', 'DESC']],
+      limit: 30,
+      subQuery: false,
+    });
+
+    if (!products.length) return [];
+
+    const scored = products.map((p) => {
+      const price = this.selectPrice(p.prices, quantity);
+      const distance =
+        offerLat !== null ? ((p.get('distance') as number) ?? 9999) : 9999;
+
+      return { product: p, price, distance };
+    });
+
+    scored.sort((a, b) => {
+      const distDiff = a.distance - b.distance;
+      if (Math.abs(distDiff) > 5) return distDiff;
+      return a.price - b.price;
+    });
+
+    return scored.slice(0, 5).map(({ product, price }) => ({
+      id: uuidv4(),
+      factory_id: product.location.id,
+      factory_name: product.location.name,
+      address: product.location.address ?? '',
+      product_name: product.name,
+      cost_price: price,
+      sale_price: price,
+      is_delivery: false,
+    }));
   }
 
   async getOfferById(id: string, user: JwtPayload) {
@@ -207,6 +342,126 @@ export class OffersService {
     return this.buildPageResponse(rows, total_count, safePage, safeLimit);
   }
 
+  async findAllOffersWithFilter(
+    address?: string,
+    created_by?: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    try {
+      const { offset, currentPage } = this.pagination(page, limit);
+
+      const offerWhere: WhereOptions = {};
+      const locationWhere: WhereOptions = {};
+
+      const normalizedAddress = address
+        ? this.normalizeName(address.trim())
+        : null;
+      if (normalizedAddress) {
+        locationWhere['address'] = { [Op.iLike]: `%${normalizedAddress}%` };
+      }
+
+      if (created_by && created_by.length > 0) {
+        offerWhere['created_by'] = created_by;
+      }
+
+      const hasAddressFilter = !!normalizedAddress;
+
+      const { rows: offers, count } = await this.offerRepo.findAndCountAll({
+        where: offerWhere,
+        include: [
+          {
+            model: Location,
+            as: 'location',
+            attributes: ['id', 'name', 'address', 'type', 'phone'],
+            where: hasAddressFilter ? locationWhere : undefined,
+            required: hasAddressFilter,
+          },
+        ],
+        offset,
+        limit,
+        order: [['createdAt', 'DESC']],
+        distinct: true,
+        col: 'id',
+      });
+
+      return this.pageResponse(offers, count, currentPage, limit);
+    } catch (error) {
+      console.error(error);
+      throw new BadRequestException(
+        'Takliflarni filterlashda xatolik yuz berdi',
+      );
+    }
+  }
+
+  async findAllOffersBySearchTerm(
+    searchTerm?: string,
+    page: number = 1,
+    limit?: number,
+  ) {
+    const { safeLimit, safePage, offset } = this.buildPagination(page, limit);
+    const statuses = Object.values(OfferStatus);
+
+    const offerWhere: any = {};
+
+    const search =
+      searchTerm && searchTerm !== 'all'
+        ? this.normalizeName(searchTerm.trim())
+        : null;
+
+    if (search) {
+      Object.assign(offerWhere, {
+        [Op.or]: [
+          { offer_number: { [Op.iLike]: `%${search}%` } },
+          Sequelize.literal(`EXISTS (
+            SELECT 1 FROM "locations" AS "loc"
+            WHERE "loc"."id" = "Offer"."location_id"
+            AND (
+              "loc"."name" ILIKE '%${search}%'
+              OR "loc"."phone" ILIKE '%${search}%'
+              OR "loc"."director_name" ILIKE '%${search}%'
+            )
+          )`),
+        ],
+      });
+    }
+
+    const groupedResults = await Promise.all(
+      statuses.map(async (status) => {
+        const { rows, count } = await this.offerRepo.findAndCountAll({
+          where: { ...offerWhere, status },
+          include: OFFER_LIST_INCLUDE,
+          offset,
+          limit: safeLimit,
+          order: [['createdAt', 'DESC']],
+          distinct: true,
+        });
+        return { status, rows, count };
+      }),
+    );
+
+    const grouped = {} as Record<string, Offer[]>;
+    const countByStatus = {} as Record<string, number>;
+
+    for (const { status, rows, count } of groupedResults) {
+      grouped[status] = rows;
+      countByStatus[status] = count;
+    }
+
+    const total_count = Object.values(countByStatus).reduce((a, b) => a + b, 0);
+
+    return {
+      data: grouped,
+      total_count,
+      counts: countByStatus,
+      page: safePage,
+      limit: safeLimit,
+      total_pages: Math.ceil(
+        Math.max(...Object.values(countByStatus)) / safeLimit,
+      ),
+    };
+  }
+
   async updateOffer(id: string, dto: UpdateOfferDto) {
     const [updated] = await this.offerRepo.update(
       {
@@ -247,6 +502,7 @@ export class OffersService {
 
       let updatedItemsCount = 0;
       let skippedItemsCount = 0;
+
       if (dto.status === OfferStatus.NEW) {
         const passivItemsCount = await this.offerItemRepo.count({
           where: {
@@ -276,12 +532,12 @@ export class OffersService {
             },
             transaction,
           });
+
           for (const item of itemsToUpdate) {
             await item.update(
               { status: OfferItemStatus.IN_PROGRESS },
               { transaction },
             );
-
             updatedItemsCount++;
           }
 
@@ -310,9 +566,7 @@ export class OffersService {
           skippedItemsCount,
         };
       }
-      return {
-        message: 'Offer statusi muvaffaqiyatli yangilandi',
-      };
+      return { message: 'Offer statusi muvaffaqiyatli yangilandi' };
     } catch (error) {
       await transaction.rollback();
       throw error;
@@ -414,126 +668,6 @@ export class OffersService {
     };
   }
 
-  async findAllOffersWithFilter(
-    address?: string,
-    created_by?: string,
-    page: number = 1,
-    limit: number = 20,
-  ) {
-    try {
-      const { offset, currentPage } = this.pagination(page, limit);
-
-      const offerWhere: WhereOptions = {};
-      const locationWhere: WhereOptions = {};
-
-      const normalizedAddress = address
-        ? this.normalizeName(address.trim())
-        : null;
-      if (normalizedAddress) {
-        locationWhere.address = { [Op.iLike]: `%${normalizedAddress}%` };
-      }
-
-      if (created_by && created_by.length > 0) {
-        offerWhere.created_by = created_by;
-      }
-
-      const hasAddressFilter = !!normalizedAddress;
-
-      const { rows: offers, count } = await this.offerRepo.findAndCountAll({
-        where: offerWhere,
-        include: [
-          {
-            model: Location,
-            as: 'location',
-            attributes: ['id', 'name', 'address', 'type', 'phone'],
-            where: hasAddressFilter ? locationWhere : undefined,
-            required: hasAddressFilter, // address kelsa INNER JOIN, kelмаса LEFT JOIN
-          },
-        ],
-        offset,
-        limit,
-        order: [['createdAt', 'DESC']],
-        distinct: true,
-        col: 'id',
-      });
-
-      return this.pageResponse(offers, count, currentPage, limit);
-    } catch (error) {
-      console.error(error);
-      throw new BadRequestException(
-        'Takliflarni filterlashda xatolik yuz berdi',
-      );
-    }
-  }
-
-  async findAllOffersBySearchTerm(
-    searchTerm?: string,
-    page: number = 1,
-    limit?: number,
-  ) {
-    const { safeLimit, safePage, offset } = this.buildPagination(page, limit);
-    const statuses = Object.values(OfferStatus);
-
-    const offerWhere: any = {};
-
-    const search =
-      searchTerm && searchTerm !== 'all'
-        ? this.normalizeName(searchTerm.trim())
-        : null;
-
-    if (search) {
-      Object.assign(offerWhere, {
-        [Op.or]: [
-          { offer_number: { [Op.iLike]: `%${search}%` } },
-          Sequelize.literal(`EXISTS (
-          SELECT 1 FROM "locations" AS "loc"
-          WHERE "loc"."id" = "Offer"."location_id"
-          AND (
-            "loc"."name" ILIKE '%${search}%'
-            OR "loc"."phone" ILIKE '%${search}%'
-            OR "loc"."director_name" ILIKE '%${search}%'
-          )
-        )`),
-        ],
-      });
-    }
-
-    const groupedResults = await Promise.all(
-      statuses.map(async (status) => {
-        const { rows, count } = await this.offerRepo.findAndCountAll({
-          where: { ...offerWhere, status },
-          include: OFFER_LIST_INCLUDE,
-          offset,
-          limit: safeLimit,
-          order: [['createdAt', 'DESC']],
-          distinct: true,
-        });
-        return { status, rows, count };
-      }),
-    );
-
-    const grouped = {} as Record<string, Offer[]>;
-    const countByStatus = {} as Record<string, number>;
-
-    for (const { status, rows, count } of groupedResults) {
-      grouped[status] = rows;
-      countByStatus[status] = count;
-    }
-
-    const total_count = Object.values(countByStatus).reduce((a, b) => a + b, 0);
-
-    return {
-      data: grouped,
-      total_count,
-      counts: countByStatus,
-      page: safePage,
-      limit: safeLimit,
-      total_pages: Math.ceil(
-        Math.max(...Object.values(countByStatus)) / safeLimit,
-      ),
-    };
-  }
-
   private pagination(page: number, limit: number) {
     const normalizedPage = Math.max(1, Number(page) || 1);
     const offset = (normalizedPage - 1) * limit;
@@ -567,5 +701,108 @@ export class OffersService {
       .replace(/[«»„""]/g, '')
       .trim()
       .toUpperCase();
+  }
+
+  private getLocalSearchVariants(searchTerm: string): string[] {
+    const lower = searchTerm.toLowerCase();
+    const raw = [
+      lower,
+      this.cyrillicToLatin(lower),
+      this.latinToCyrillic(lower),
+    ];
+    return [...new Set(raw.map((v) => this.normalizeName(v)))];
+  }
+
+  private cyrillicToLatin(text: string): string {
+    const map: Record<string, string> = {
+      а: 'a',
+      б: 'b',
+      в: 'v',
+      г: 'g',
+      д: 'd',
+      е: 'e',
+      ё: 'yo',
+      ж: 'j',
+      з: 'z',
+      и: 'i',
+      й: 'y',
+      к: 'k',
+      л: 'l',
+      м: 'm',
+      н: 'n',
+      о: 'o',
+      п: 'p',
+      р: 'r',
+      с: 's',
+      т: 't',
+      у: 'u',
+      ф: 'f',
+      х: 'x',
+      ц: 'ts',
+      ч: 'ch',
+      ш: 'sh',
+      щ: 'sh',
+      ъ: '',
+      ы: 'i',
+      ь: '',
+      э: 'e',
+      ю: 'yu',
+      я: 'ya',
+      ғ: 'g',
+      қ: 'q',
+      ҳ: 'h',
+      ӯ: 'o',
+      ў: 'o',
+    };
+    return text
+      .split('')
+      .map((c) => map[c] ?? c)
+      .join('');
+  }
+
+  private latinToCyrillic(text: string): string {
+    const digraphs: Record<string, string> = {
+      yo: 'ё',
+      yu: 'ю',
+      ya: 'я',
+      ts: 'ц',
+      ch: 'ч',
+      sh: 'ш',
+    };
+    const singles: Record<string, string> = {
+      a: 'а',
+      b: 'б',
+      v: 'в',
+      g: 'г',
+      d: 'д',
+      e: 'е',
+      j: 'ж',
+      z: 'з',
+      i: 'и',
+      y: 'й',
+      k: 'к',
+      l: 'л',
+      m: 'м',
+      n: 'н',
+      o: 'о',
+      p: 'п',
+      r: 'р',
+      s: 'с',
+      t: 'т',
+      u: 'у',
+      f: 'ф',
+      x: 'х',
+      q: 'қ',
+      h: 'ҳ',
+    };
+
+    let result = text;
+    for (const d of Object.keys(digraphs)) {
+      result = result.split(d).join(digraphs[d]);
+    }
+    return result
+      .split('')
+      .map((c) => singles[c] ?? c)
+      .join('');
   }
 }

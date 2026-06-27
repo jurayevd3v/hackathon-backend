@@ -22,7 +22,12 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles-auth-decorator';
 import { UserRole } from '../common/enums/user-role.enum';
-const ADMIN_ROLES = [UserRole.SUPER_ADMIN, UserRole.ADMIN];
+const ADMIN_ROLES = [
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.FACTORY,
+  UserRole.COMPANY,
+];
 
 @ApiTags('Local Categories')
 @ApiBearerAuth()
