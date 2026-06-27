@@ -63,6 +63,8 @@ export class LocalCategoriesService {
       throw new BadRequestException(`ID ${id} bo'yicha kategoriya topilmadi`);
     dto.name = this.normalizeName(dto.name);
 
+    await category.update(dto);
+
     return { message: 'Kategoriya muvaffaqiyatli yangilandi', category };
   }
 
