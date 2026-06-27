@@ -33,9 +33,7 @@ const OFFER_LIST_INCLUDE = [
     required: false,
     include: [
       {
-        model: User,
-        as: 'supplier',
-        attributes: ['full_name'],
+        model: Location,
         required: false,
       },
     ],
@@ -131,25 +129,6 @@ export class OffersService {
       await offer.update({ status: OfferStatus.IN_PROGRESS });
     }
     return offer;
-  }
-
-  async getPaginatedOffersByCreated(
-    created_by: string,
-    page = 1,
-    limit?: number,
-  ) {
-    const { safeLimit, safePage, offset } = this.buildPagination(page, limit);
-
-    const { rows, count: total_count } = await this.offerRepo.findAndCountAll({
-      where: { created_by, status: OfferStatus.PENDING_CONFIRMATION },
-      include: OFFER_LIST_INCLUDE,
-      offset,
-      limit: safeLimit,
-      order: [['createdAt', 'DESC']],
-      distinct: true,
-    });
-
-    return this.buildPageResponse(rows, total_count, safePage, safeLimit);
   }
 
   async getPaginatedOffers(status: string, page = 1, limit?: number) {
