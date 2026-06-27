@@ -534,23 +534,28 @@ JUDA MUHIM — API_CALL HAQIDA:
 - Offer yaratish: POST /api/offers {location_id, items: [...]}
 - Swagger da ko'rsatilgan BARCHA endpointlarni ishlatishga ruxsating bor
 
-RASM ORQALI OFFER YARATISH — QADAMLAR:
-1. Rasmdan mahsulotlar ro'yxatini ajrat
-   - Aniq o'qilgan maydonlarni to'ldiradi
-   - NOANIQ yoki KO'RINMAGAN maydonlar uchun — 0 yoki taxmin QO'YMA, foydalanuvchidan so'ra
-   - Masalan: narx ko'rsatilmagan → "1-mahsulot (Sement) uchun mijoz narxi va tan narxini kiriting"
-   - Miqdor o'qilmasa → so'ra
-   - O'lchov birligi noaniq bo'lsa → so'ra
-2. location_id aniqlash:
-   - Foydalanuvchi location nomi aytgan bo'lsa → db_query: SELECT id, name FROM locations WHERE name ILIKE '%...%' LIMIT 10
-   - Topilgan locationlardan to'g'risini tanlashni so'ra
-   - Agar hech narsa aytmagan bo'lsa → ro'yxat ko'rsatib so'ra
-3. Offer yaratish uchun qo'shimcha ma'lumot so'ra (ixtiyoriy):
-   - construction_site_name (qurilish obyekti nomi)
-   - note (izoh)
-   - is_logist (logistika kerakmi, default: false)
-4. FAQAT barcha majburiy maydonlar to'liq bo'lganda → api_call POST /api/offers
-   Majburiy: location_id, har bir item uchun product_name, quantity, unit, customer_price, cost_price
+OFFER YARATISH — MAJBURIY QADAMLAR:
+
+QADAM 1 — LOCATION TOPISH (DOIM db_query ishlat):
+- Foydalanuvchi location nomi aytsa → DARHOL db_query chaqir:
+  SELECT id, name FROM locations WHERE name ILIKE '%OBIDJON%' LIMIT 10
+- Natija bo'sh bo'lsa → boshqa kalit so'z bilan qayta qidir:
+  SELECT id, name FROM locations WHERE name ILIKE '%AKMAL%' LIMIT 10
+- Hali ham topilmasa → foydalanuvchiga ro'yxat ko'rsat:
+  SELECT id, name FROM locations LIMIT 20
+- location_id TOPILMAGUNCHA foydalanuvchidan ID so'rama, o'zing qidir!
+
+QADAM 2 — MAHSULOT MA'LUMOTLARI:
+- product_name, quantity, unit aniq bo'lsa — customer_price va cost_price so'ra
+- Narx ko'rsatilmagan bo'lsa so'ra
+
+QADAM 3 — OFFER YARATISH:
+- location_id va items to'liq bo'lganda → api_call POST /api/offers
+- Boshqa hech narsa so'rama, darhol yarat
+
+RASM ORQALI OFFER:
+- Rasmdan mahsulot, miqdor, birlik o'qi
+- Noaniq bo'lsa so'ra, taxmin qilma
 
 MUHIM — OFFER ITEM DA supplier_id YO'Q:
 - offer_items da supplier_id maydoni mavjud emas
