@@ -67,12 +67,12 @@ export class UserController {
     return this.userService.getAdminUsers();
   }
 
-  // @ApiOperation({ summary: 'Get users by location ID' })
-  // @Roles(...COMPANY_ROLES)
-  // @Get('locationId/:location_id')
-  // getUsersByLocation(@Param('location_id') location_id: string) {
-  //   return this.userService.getUsersByLocation(location_id);
-  // }
+  @ApiOperation({ summary: 'Get users by location ID' })
+  @Roles(...ALL_ROLES)
+  @Get('locationId/:location_id')
+  getUsersByLocation(@Param('location_id') location_id: string) {
+    return this.userService.getUsersByLocation(location_id);
+  }
 
   @ApiOperation({ summary: 'Get users with pagination' })
   @Roles(...ADMIN_ROLES)

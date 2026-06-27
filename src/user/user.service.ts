@@ -122,9 +122,9 @@ export class UserService implements OnModuleInit {
     return user;
   }
 
-  // async getUsersByLocation(location_id: string) {
-  //   return this.userRepo.findAll({ where: { location_id } });
-  // }
+  async getUsersByLocation(location_id: string) {
+    return this.userRepo.findAll({ where: { location_id } });
+  }
 
   async getPaginatedUsers(page: number) {
     const where = {
